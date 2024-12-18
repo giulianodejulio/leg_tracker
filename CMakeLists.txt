@@ -14,6 +14,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   rospy
   std_msgs
+  nav_msgs
   tf
   interactive_markers
   rosbag
@@ -29,12 +30,16 @@ add_message_files(
   PersonArray.msg
   Leg.msg
   LegArray.msg
+  PersonDavidLu.msg
+  People.msg
+  PeopleOdometry.msg
 )
 
 generate_messages(   
   DEPENDENCIES  
   std_msgs  
   geometry_msgs
+  nav_msgs
 )  
 
 
@@ -117,6 +122,11 @@ install(
 
 install(
   PROGRAMS scripts/individual_leg_tracker.py
+  DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+
+catkin_install_python(PROGRAMS
+  scripts/realtime_topic_plot.py
   DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
 )
 
