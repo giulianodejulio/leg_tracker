@@ -1,17 +1,21 @@
 <?xml version="1.0" ?>
 <launch>
+  <arg name="scan_topic" default="/scan"/>
+  <arg name="fixed_frame" default="/base_link"/>
   <!-- params -->
   <param name="forest_file" value="$(find leg_tracker)/config/trained_leg_detector_res=0.33.yaml" />
-  <param name="scan_topic" value="/scan" />
-  <param name="fixed_frame" value="/base_link"/>
-  <param name="scan_frequency" value="10"/>  
+  <param name="scan_topic" value="$(arg scan_topic)" />
+  <param name="fixed_frame" value="$(arg fixed_frame)"/>
+  <param name="scan_frequency" value="10"/>
   
   
-  <!-- run detect_leg_clusters -->  
+  <!-- run detect_leg_clusters to detect laserscan clusters of legs and publish markers with ns = "LEGS" -->  
   <node pkg="leg_tracker" type="detect_leg_clusters" name="detect_leg_clusters" output="screen"/>
 
-  <!-- run joint_leg_tracker -->
-  <node pkg="leg_tracker" type="joint_leg_tracker.py" name="joint_leg_tracker" output="screen"/>
+  <!-- run joint_leg_tracker: it publishes markers with ns = "People_tracked" -->
+  <node pkg="leg_tracker" type="joint_leg_tracker.py" name="joint_leg_tracker" output="screen">
+    <remap from="people_odometry" to="moca_red/people_odometry"/>
+  </node>
  
    <!-- run local_occupancy_grid_mapping -->
   <node pkg="leg_tracker" type="local_occupancy_grid_mapping" name="local_occupancy_grid_mapping" output="screen"/> 

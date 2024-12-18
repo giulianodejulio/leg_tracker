@@ -4,11 +4,13 @@ import rospy
 
 # Custom messages
 from leg_tracker.msg import Person, PersonArray, Leg, LegArray 
+from leg_tracker.msg import People, PersonDavidLu, PeopleOdometry
 
 # ROS messages
 from visualization_msgs.msg import Marker
 from sensor_msgs.msg import LaserScan
 from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import Odometry
 
 # Standard python modules
 import numpy as np
@@ -180,7 +182,7 @@ class KalmanMultiTracker:
         self.use_scan_header_stamp_for_tfs = rospy.get_param("use_scan_header_stamp_for_tfs", False)
         self.publish_detected_people = rospy.get_param("display_detected_people", False)        
         self.dist_travelled_together_to_initiate_leg_pair = rospy.get_param("dist_travelled_together_to_initiate_leg_pair", 0.5)
-        scan_topic = rospy.get_param("scan_topic", "scan");
+        scan_topic = rospy.get_param("scan_topic", "scan")
         self.scan_frequency = rospy.get_param("scan_frequency", 7.5)
         self.in_free_space_threshold = rospy.get_param("in_free_space_threshold", 0.06)
         self.confidence_percentile = rospy.get_param("confidence_percentile", 0.90)
@@ -191,9 +193,11 @@ class KalmanMultiTracker:
         self.latest_scan_header_stamp_with_tf_available = rospy.get_rostime()
 
     	# ROS publishers
-        self.people_tracked_pub = rospy.Publisher('people_tracked', PersonArray, queue_size=300)
-        self.people_detected_pub = rospy.Publisher('people_detected', PersonArray, queue_size=300)
-        self.marker_pub = rospy.Publisher('visualization_marker', Marker, queue_size=300)
+        self.people_tracked_pub   = rospy.Publisher('people_tracked', PersonArray, queue_size=300)
+        self.people_pub           = rospy.Publisher('people', People, queue_size=300)
+        self.people_odom_pub      = rospy.Publisher('people_odometry', PeopleOdometry, queue_size=300)
+        self.people_detected_pub  = rospy.Publisher('people_detected', PersonArray, queue_size=300) # useless
+        self.marker_pub           = rospy.Publisher('visualization_marker', Marker, queue_size=300)
         self.non_leg_clusters_pub = rospy.Publisher('non_leg_clusters', LegArray, queue_size=300)
 
         # ROS subscribers         
@@ -607,8 +611,18 @@ class KalmanMultiTracker:
         """        
         people_tracked_msg = PersonArray()
         people_tracked_msg.header.stamp = now
-        people_tracked_msg.header.frame_id = self.publish_people_frame        
+        people_tracked_msg.header.frame_id = self.publish_people_frame
         marker_id = 0
+
+        # publish on /people (position + velocity)
+        people_msg = People()
+        people_msg.header.stamp = now
+        people_msg.header.frame_id = self.publish_people_frame
+        # publish on /people_odometry
+        people_odom_msg = PeopleOdometry()
+        people_odom_msg.header.stamp = now
+        people_odom_msg.header.frame_id = self.publish_people_frame
+
 
         # Make sure we can get the required transform first:
         if self.use_scan_header_stamp_for_tfs:
@@ -646,6 +660,8 @@ class KalmanMultiTracker:
                         new_person.pose.position.x = ps.point.x 
                         new_person.pose.position.y = ps.point.y 
                         yaw = math.atan2(person.vel_y, person.vel_x)
+                        # rospy.logerr("pos = (%.2f, %.2f)", ps.point.x, ps.point.y)
+                        # rospy.logerr("vel = (%.2f, %.2f)", person.vel_x, person.vel_y)
                         quaternion = tf.transformations.quaternion_from_euler(0, 0, yaw)
                         new_person.pose.orientation.x = quaternion[0]
                         new_person.pose.orientation.y = quaternion[1]
@@ -653,6 +669,31 @@ class KalmanMultiTracker:
                         new_person.pose.orientation.w = quaternion[3] 
                         new_person.id = person.id_num 
                         people_tracked_msg.people.append(new_person)
+
+                        # prepare to publish on /people_odometry
+                        new_person_Odometry = Odometry()
+                        new_person_Odometry.header.frame_id = self.publish_people_frame
+                        new_person_Odometry.header.stamp = now
+                        new_person_Odometry.child_frame_id = "person_" + str(person.id_num)
+                        new_person_Odometry.pose.pose.position.x = ps.point.x
+                        new_person_Odometry.pose.pose.position.y = ps.point.y
+                        new_person_Odometry.pose.pose.orientation.x = quaternion[0]
+                        new_person_Odometry.pose.pose.orientation.y = quaternion[1]
+                        new_person_Odometry.pose.pose.orientation.z = quaternion[2]
+                        new_person_Odometry.pose.pose.orientation.w = quaternion[3] 
+                        new_person_Odometry.twist.twist.linear.x = person.vel_x
+                        new_person_Odometry.twist.twist.linear.y = person.vel_y
+                        new_person_Odometry.twist.twist.linear.z = 0.0
+                        people_odom_msg.people_odometry.append(new_person_Odometry)
+
+                        new_person_DavidLu = PersonDavidLu()
+                        new_person_DavidLu.name = str(person.id_num)
+                        new_person_DavidLu.position.x = ps.point.x
+                        new_person_DavidLu.position.y = ps.point.y
+                        new_person_DavidLu.velocity.x = person.vel_x
+                        new_person_DavidLu.velocity.y = person.vel_y
+                        new_person_DavidLu.velocity.z = 0.0
+                        people_msg.people.append(new_person_DavidLu)
 
                         # publish rviz markers       
                         # Cylinder for body 
@@ -753,8 +794,13 @@ class KalmanMultiTracker:
         self.prev_person_marker_id = marker_id          
 
         # Publish people tracked message
-        self.people_tracked_pub.publish(people_tracked_msg)            
-
+        self.people_tracked_pub.publish(people_tracked_msg)
+        
+        # Publish on /people
+        self.people_pub.publish(people_msg)
+        
+        # Publish on /people_odometry
+        self.people_odom_pub.publish(people_odom_msg)
 
 if __name__ == '__main__':
     rospy.init_node('multi_person_tracker', anonymous=True)
